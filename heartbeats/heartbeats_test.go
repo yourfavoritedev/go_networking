@@ -86,6 +86,7 @@ func TestPingerAdvancedDeadline(t *testing.T) {
 
 		buf := make([]byte, 1024)
 		for {
+			// blocks until data can be read on the listener
 			n, err := conn.Read(buf)
 			if err != nil {
 				return
@@ -93,6 +94,8 @@ func TestPingerAdvancedDeadline(t *testing.T) {
 			t.Logf("[%s] %s",
 				time.Since(begin).Truncate(time.Second), buf[:n])
 
+			// reset the ping timer and advance the deadline
+			// to stay connected to network connection
 			resetTimer <- 0
 			err = conn.SetDeadline(time.Now().Add(5 * time.Second))
 			if err != nil {
@@ -117,7 +120,10 @@ func TestPingerAdvancedDeadline(t *testing.T) {
 		t.Logf("[%s] %s", time.Since(begin).Truncate(time.Second), buf[:n])
 	}
 
-	_, err = conn.Write([]byte("PONG!!!")) // should reset the ping timer
+	// At this point, bytes have been successfully read.
+	// Write to the listener to unblock the Read on Line 89.
+	// This serves as a confirmation to keep the connection alive.
+	_, err = conn.Write([]byte("PONG!!!"))
 	if err != nil {
 		t.Fatal(err)
 	}

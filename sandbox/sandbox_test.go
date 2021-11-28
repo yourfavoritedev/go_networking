@@ -348,3 +348,66 @@ func TestDeadline(t *testing.T) {
 		t.Errorf("expected server termination, actual: %v", err)
 	}
 }
+
+func TestTemporaryErrors(t *testing.T) {
+	var (
+		err error
+		n   int
+		i   = 7 // maximum number of retries
+	)
+
+	listener, err := net.Listen("tcp", "127.0.0.1:")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	go func() {
+		conn, err := listener.Accept()
+		if err != nil {
+			t.Error(err)
+			return
+		}
+
+		defer conn.Close()
+
+		for ; i > 0; i-- {
+			// attempt to write to connection
+			n, err = conn.Write([]byte("hello world"))
+			if err != nil {
+				// verify if err is temporary
+				if nErr, ok := err.(net.Error); ok && nErr.Temporary() {
+					t.Logf("temporary error: %v", nErr)
+					// wait five seconds before retrying to write
+					time.Sleep(5 * time.Second)
+					continue
+				}
+				// exit because this was not a temporary error
+				return
+			}
+			// break out of loop if write was successful
+			break
+		}
+
+		if i == 0 {
+			t.Log("temporary write failure threshold execeeded")
+			return
+		}
+
+		t.Logf("wrote %d bytes to %s\n", n, conn.RemoteAddr())
+	}()
+
+	conn, err := net.Dial("tcp", listener.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	defer conn.Close()
+
+	buf := make([]byte, 1<<19)
+	_, err = conn.Read(buf)
+	if err != nil {
+		if err != io.EOF {
+			t.Error(err)
+		}
+	}
+}
